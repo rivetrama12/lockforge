@@ -15,7 +15,7 @@ Open the local URL printed by Next.js (this project uses port 4317 when started 
 
 ## What the screen shows
 
-- Sectioned punch and lower bush, with the ram stroke from billet load to dwell
+- Timed press simulation: approach, upset, dwell, return, and eject, with load, fill, and temperature
 - Catalog envelope used for the model (shank, head, length, grip)
 - Billet size, die bore, H13 inserts, and the working load versus 300 t
 - A dimensioned die section and the press sequence

@@ -7,12 +7,26 @@ import * as THREE from "three";
 import { cone, forge, part } from "@/lib/lockbolt";
 
 type Props = {
-  stroke: number;
+  gapMm: number;
+  fill: number;
+  tempC: number;
+  ejectMm: number;
+  metalTop: number;
+  headDia: number;
   section: boolean;
   showPin: boolean;
 };
 
-export function ForgeView({ stroke, section, showPin }: Props) {
+export function ForgeView({
+  gapMm,
+  fill,
+  tempC,
+  ejectMm,
+  metalTop,
+  headDia,
+  section,
+  showPin,
+}: Props) {
   return (
     <Canvas
       camera={{ position: [160, 70, 210], fov: 32, near: 0.5, far: 4000 }}
@@ -22,30 +36,55 @@ export function ForgeView({ stroke, section, showPin }: Props) {
       <ambientLight intensity={0.45} />
       <directionalLight position={[80, 180, 60]} intensity={1.6} />
       <directionalLight position={[-120, 40, -40]} intensity={0.35} />
-      <Scene stroke={stroke} section={section} showPin={showPin} />
+      <Scene
+        gapMm={gapMm}
+        fill={fill}
+        tempC={tempC}
+        ejectMm={ejectMm}
+        metalTop={metalTop}
+        headDia={headDia}
+        section={section}
+        showPin={showPin}
+      />
       <OrbitControls target={[0, -20, 0]} maxDistance={600} />
     </Canvas>
   );
 }
 
-function Scene({ stroke, section, showPin }: Props) {
+function Scene({
+  gapMm,
+  fill,
+  tempC,
+  ejectMm,
+  metalTop,
+  headDia,
+  section,
+  showPin,
+}: Props) {
   const clip = useMemo(
     () => [new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0)],
     [],
   );
   const planes = section ? clip : undefined;
-  const lift = (1 - stroke) * 78;
-  const hot = stroke < 0.98;
+  const hot = tempC > 900;
 
   return (
     <group>
       <PressFrame />
       <LowerDie planes={planes} />
-      <group position={[0, lift, 0]}>
+      <group position={[0, gapMm, 0]}>
         <Punch planes={planes} />
       </group>
-      <Workpiece stroke={stroke} hot={hot} />
-      <Ejector stroke={stroke} />
+      <group position={[0, ejectMm, 0]}>
+        <Workpiece
+          fill={fill}
+          metalTop={metalTop}
+          headDia={headDia}
+          tempC={tempC}
+          hot={hot}
+        />
+      </group>
+      <Ejector ejectMm={ejectMm} />
       {showPin && <FinishedPin />}
       <gridHelper
         args={[420, 14, "#3a332c", "#2a241e"]}
@@ -156,46 +195,50 @@ function Punch({ planes }: { planes?: THREE.Plane[] }) {
   );
 }
 
-function Workpiece({ stroke, hot }: { stroke: number; hot: boolean }) {
+function Workpiece({
+  fill,
+  metalTop,
+  headDia,
+  tempC,
+  hot,
+}: {
+  fill: number;
+  metalTop: number;
+  headDia: number;
+  tempC: number;
+  hot: boolean;
+}) {
   const geom = useMemo(() => {
-    const shankR = part.shank / 2;
     const billetR = forge.billetDia / 2;
     const depth = part.length - part.headH;
-    const stick = forge.stickOut;
-    const headR = part.head / 2;
-    const t = Math.min(1, Math.max(0, (stroke - 0.42) / 0.58));
-    const top = stick * (1 - t) + part.headH * t;
-    const flare = billetR * (1 - t) + headR * t;
+    const headR = Math.max(headDia / 2, billetR);
+    const top = Math.max(metalTop, 0.4);
     const pts: THREE.Vector2[] = [];
-    const steps = 28;
+    const steps = 32;
     for (let i = 0; i <= steps; i++) {
-      const y = -depth + (top + depth) * (i / steps);
-      let r = shankR * (1 - t) + shankR * t;
-      if (y < 0) {
-        r = billetR * (1 - t * 0.15) + shankR * (t * 0.15);
-        r = THREE.MathUtils.lerp(billetR, shankR, t);
-      } else {
-        const u = y / Math.max(top, 0.01);
-        const landStart = 1 - cone.land / part.headH;
-        if (t > 0.85 && u > landStart) r = headR;
-        else if (t > 0.85) {
-          const coneU = u / landStart;
-          r = THREE.MathUtils.lerp(shankR, headR, coneU);
+      const y = -depth + ((top + depth) * i) / steps;
+      let r = billetR;
+      if (y >= 0) {
+        const u = y / top;
+        if (fill > 0.82) {
+          const landStart = 1 - cone.land / part.headH;
+          r = u > landStart ? part.head / 2 : THREE.MathUtils.lerp(billetR, part.head / 2, u / landStart);
         } else {
-          r = THREE.MathUtils.lerp(billetR, flare, Math.pow(u, 0.65));
+          r = THREE.MathUtils.lerp(billetR, headR, Math.pow(u, 0.7));
         }
       }
       pts.push(new THREE.Vector2(Math.max(r, 0.4), y));
     }
     return new THREE.LatheGeometry(pts, 48);
-  }, [stroke]);
+  }, [fill, metalTop, headDia]);
 
+  const heat = Math.min(1, Math.max(0, (tempC - 900) / 250));
   return (
     <mesh geometry={geom}>
       <meshStandardMaterial
         color={hot ? "#ff6a2c" : "#d9cbb6"}
         emissive={hot ? "#ff3b00" : "#000"}
-        emissiveIntensity={hot ? 0.45 : 0}
+        emissiveIntensity={hot ? 0.25 + heat * 0.35 : 0}
         metalness={hot ? 0.25 : 0.65}
         roughness={hot ? 0.42 : 0.35}
       />
@@ -203,11 +246,10 @@ function Workpiece({ stroke, hot }: { stroke: number; hot: boolean }) {
   );
 }
 
-function Ejector({ stroke }: { stroke: number }) {
-  const lift = stroke > 0.98 ? 18 : 0;
+function Ejector({ ejectMm }: { ejectMm: number }) {
   const depth = part.length - part.headH;
   return (
-    <mesh position={[0, -depth - 20 + lift, 0]}>
+    <mesh position={[0, -depth - 20 + ejectMm, 0]}>
       <cylinderGeometry args={[8, 8, 50, 24]} />
       <meshStandardMaterial color="#b7aa96" metalness={0.7} roughness={0.3} />
     </mesh>

@@ -7,43 +7,51 @@ import { Slider } from "@/components/ui/slider";
 import { ForgeView } from "@/components/forge-view";
 import { DieSection } from "@/components/die-section";
 import { forge, mm, part } from "@/lib/lockbolt";
+import { LoadChart } from "@/components/load-chart";
+import {
+  cycleDuration,
+  phaseLabel,
+  sample,
+  trace,
+  type Phase,
+} from "@/lib/simulate";
 
-const stages = [
-  { id: "load", label: "1 · Load", at: 0.08 },
-  { id: "approach", label: "2 · Approach", at: 0.38 },
-  { id: "upset", label: "3 · Upset", at: 0.72 },
-  { id: "dwell", label: "4 · Dwell", at: 1 },
-] as const;
+const stages: { id: Phase; label: string; at: number }[] = [
+  { id: "approach", label: "Approach", at: 0.5 },
+  { id: "upset", label: "Upset", at: 2.5 },
+  { id: "dwell", label: "Dwell", at: 3.8 },
+  { id: "eject", label: "Eject", at: 6.0 },
+];
+
+const loadTrace = trace(0.08);
 
 export function Studio() {
-  const [stroke, setStroke] = useState(0.08);
+  const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [section, setSection] = useState(true);
-  const [showPin, setShowPin] = useState(true);
+  const [showPin, setShowPin] = useState(false);
+  const frame = sample(time);
 
   useEffect(() => {
     if (!playing) return;
-    let frame = 0;
+    let handle = 0;
     let last = performance.now();
     const tick = (now: number) => {
       const dt = (now - last) / 1000;
       last = now;
-      setStroke((value) => {
-        const next = value + dt * 0.18;
-        if (next >= 1) {
+      setTime((value) => {
+        const next = value + dt;
+        if (next >= cycleDuration) {
           setPlaying(false);
-          return 1;
+          return cycleDuration;
         }
         return next;
       });
-      frame = requestAnimationFrame(tick);
+      handle = requestAnimationFrame(tick);
     };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    handle = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(handle);
   }, [playing]);
-
-  const phase =
-    stroke < 0.25 ? "Billet in the bore" : stroke < 0.55 ? "Punch approaching" : stroke < 0.95 ? "Head upsetting" : "Cavity full — dwell";
 
   return (
     <div className="min-h-screen bg-[#14110e] text-[#f3efe6]">
@@ -57,8 +65,8 @@ export function Studio() {
               {part.title}, {part.length} mm pin
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-[#cbbfaa]">
-              First operation: hot-head the countersunk pin in one blow. Lock
-              grooves, breakneck, and pintail are rolled after this die.
+              Hydraulic-press simulation of the first blow. Load, fill, and
+              temperature come from the billet volume and the 100° cavity.
             </p>
           </div>
           <Badge variant="outline" className="border-[#c6a15a] text-[#f0d7b4]">
@@ -70,11 +78,22 @@ export function Studio() {
       <main className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="relative min-h-[520px] border-b border-[#3a342c] lg:border-r lg:border-b-0">
           <div className="absolute inset-0">
-            <ForgeView stroke={stroke} section={section} showPin={showPin} />
+            <ForgeView
+              gapMm={frame.gapMm}
+              fill={frame.fill}
+              tempC={frame.tempC}
+              ejectMm={frame.ejectMm}
+              metalTop={frame.metalTop}
+              headDia={frame.headDia}
+              section={section}
+              showPin={showPin}
+            />
           </div>
           <div className="pointer-events-none absolute top-4 left-4 rounded-md bg-[#14110e]/80 px-3 py-2">
-            <p className="font-mono text-[11px] text-[#c6a15a]">RAM</p>
-            <p className="text-sm">{phase}</p>
+            <p className="font-mono text-[11px] text-[#c6a15a]">
+              {frame.t.toFixed(2)} s · {frame.phase.toUpperCase()}
+            </p>
+            <p className="text-sm">{phaseLabel(frame.phase)}</p>
           </div>
           <div className="absolute right-4 bottom-4 left-4 space-y-3 rounded-lg border border-[#3a342c] bg-[#1b1714]/90 p-3 backdrop-blur">
             <div className="flex flex-wrap gap-2">
@@ -82,27 +101,43 @@ export function Studio() {
                 <Button
                   key={stage.id}
                   size="sm"
-                  variant={Math.abs(stroke - stage.at) < 0.08 ? "default" : "outline"}
+                  variant={frame.phase === stage.id ? "default" : "outline"}
                   onClick={() => {
                     setPlaying(false);
-                    setStroke(stage.at);
+                    setTime(stage.at);
                   }}
                 >
                   {stage.label}
                 </Button>
               ))}
-              <Button size="sm" onClick={() => setPlaying((value) => !value)}>
-                {playing ? "Pause" : "Play stroke"}
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (time >= cycleDuration) setTime(0);
+                  setPlaying((value) => !value);
+                }}
+              >
+                {playing ? "Pause" : "Run cycle"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setPlaying(false);
+                  setTime(0);
+                }}
+              >
+                Reset
               </Button>
             </div>
             <Slider
-              value={[stroke]}
+              value={[time]}
               min={0}
-              max={1}
-              step={0.005}
+              max={cycleDuration}
+              step={0.01}
               onValueChange={(value) => {
                 setPlaying(false);
-                setStroke(value[0] ?? 0);
+                setTime(value[0] ?? 0);
               }}
             />
             <div className="flex flex-wrap gap-2">
@@ -117,6 +152,14 @@ export function Studio() {
         </section>
 
         <aside className="space-y-5 px-5 py-5 md:px-6">
+          <Gauges
+            forceT={frame.forceT}
+            tempC={frame.tempC}
+            fill={frame.fill}
+            gapMm={frame.gapMm}
+            headDia={frame.headDia}
+          />
+          <LoadChart frames={loadTrace} cursor={time} />
           <ProcessCard />
         </aside>
       </main>
@@ -125,6 +168,49 @@ export function Studio() {
         <DieSection />
         <ShopSequence />
       </section>
+    </div>
+  );
+}
+
+function Gauges({
+  forceT,
+  tempC,
+  fill,
+  gapMm,
+  headDia,
+}: {
+  forceT: number;
+  tempC: number;
+  fill: number;
+  gapMm: number;
+  headDia: number;
+}) {
+  const cells = [
+    ["Load", `${forceT.toFixed(1)} t`],
+    ["Metal", `${tempC.toFixed(0)} °C`],
+    ["Fill", `${Math.round(fill * 100)} %`],
+    ["Gap", `${gapMm.toFixed(1)} mm`],
+    ["Head Ø", `${headDia.toFixed(1)} mm`],
+    ["Limit", `${forge.limitTonnes} t`],
+  ];
+  return (
+    <div>
+      <h2 className="text-sm font-medium tracking-wide text-[#c6a15a]">
+        Blow simulation
+      </h2>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        {cells.map(([label, value]) => (
+          <div key={label} className="rounded-md border border-[#3a342c] px-2 py-2">
+            <p className="text-[11px] text-[#9c8f7e]">{label}</p>
+            <p className="font-mono text-sm text-[#f3efe6]">{value}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-[#9c8f7e]">
+        Slab estimate: free upset until the head meets the cone, then the
+        constraint rises to {forge.constraint}. Peak must stay under the {forge.limitTonnes} t
+        relief. Not a finite-element result.
+      </p>
     </div>
   );
 }
