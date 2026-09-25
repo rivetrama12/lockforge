@@ -1,0 +1,11 @@
+{
+  "name": "CSK lockbolt forging die",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "next-dev",
+      "command": "npm run dev -- -p 4317"
+    }
+  ],
+  "ports": [4317]
+}
