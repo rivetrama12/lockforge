@@ -53,8 +53,25 @@ export function Studio() {
     return () => cancelAnimationFrame(handle);
   }, [playing]);
 
+  const onStage = (at: number) => {
+    setPlaying(false);
+    setTime(at);
+  };
+  const onTogglePlay = () => {
+    if (time >= cycleDuration) setTime(0);
+    setPlaying((value) => !value);
+  };
+  const onReset = () => {
+    setPlaying(false);
+    setTime(0);
+  };
+  const onScrub = (value: number) => {
+    setPlaying(false);
+    setTime(value);
+  };
+
   return (
-    <div className="min-h-screen bg-[#14110e] text-[#f3efe6]">
+    <div className="min-h-screen overflow-x-hidden bg-[#14110e] text-[#f3efe6]">
       <header className="border-b border-[#3a342c] px-5 py-4 md:px-8">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -76,78 +93,57 @@ export function Studio() {
       </header>
 
       <main className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="relative min-h-[520px] border-b border-[#3a342c] lg:border-r lg:border-b-0">
-          <div className="absolute inset-0">
-            <ForgeView
-              gapMm={frame.gapMm}
-              fill={frame.fill}
-              tempC={frame.tempC}
-              ejectMm={frame.ejectMm}
-              metalTop={frame.metalTop}
-              headDia={frame.headDia}
+        <section className="relative border-b border-[#3a342c] lg:border-r lg:border-b-0">
+          <div className="relative h-[58svh] min-h-[340px] w-full touch-none lg:h-full lg:min-h-[560px]">
+            <div className="absolute inset-0">
+              <ForgeView
+                gapMm={frame.gapMm}
+                fill={frame.fill}
+                tempC={frame.tempC}
+                ejectMm={frame.ejectMm}
+                metalTop={frame.metalTop}
+                headDia={frame.headDia}
+                section={section}
+                showPin={showPin}
+              />
+            </div>
+            <div className="pointer-events-none absolute top-3 left-3 rounded-md bg-[#14110e]/80 px-3 py-2">
+              <p className="font-mono text-[11px] text-[#c6a15a]">
+                {frame.t.toFixed(2)} s · {frame.phase.toUpperCase()}
+              </p>
+              <p className="text-sm">{phaseLabel(frame.phase)}</p>
+            </div>
+            <div className="pointer-events-none absolute right-3 bottom-3 left-3 hidden lg:block">
+              <Controls
+                activePhase={frame.phase}
+                time={time}
+                playing={playing}
+                section={section}
+                showPin={showPin}
+                onStage={onStage}
+                onTogglePlay={onTogglePlay}
+                onReset={onReset}
+                onScrub={onScrub}
+                onToggleSection={() => setSection((v) => !v)}
+                onTogglePin={() => setShowPin((v) => !v)}
+                className="pointer-events-auto rounded-lg border border-[#3a342c] bg-[#1b1714]/90 p-3 backdrop-blur"
+              />
+            </div>
+          </div>
+          <div className="border-t border-[#3a342c] bg-[#1b1714] p-3 lg:hidden">
+            <Controls
+              activePhase={frame.phase}
+              time={time}
+              playing={playing}
               section={section}
               showPin={showPin}
+              onStage={onStage}
+              onTogglePlay={onTogglePlay}
+              onReset={onReset}
+              onScrub={onScrub}
+              onToggleSection={() => setSection((v) => !v)}
+              onTogglePin={() => setShowPin((v) => !v)}
             />
-          </div>
-          <div className="pointer-events-none absolute top-4 left-4 rounded-md bg-[#14110e]/80 px-3 py-2">
-            <p className="font-mono text-[11px] text-[#c6a15a]">
-              {frame.t.toFixed(2)} s · {frame.phase.toUpperCase()}
-            </p>
-            <p className="text-sm">{phaseLabel(frame.phase)}</p>
-          </div>
-          <div className="absolute right-4 bottom-4 left-4 space-y-3 rounded-lg border border-[#3a342c] bg-[#1b1714]/90 p-3 backdrop-blur">
-            <div className="flex flex-wrap gap-2">
-              {stages.map((stage) => (
-                <Button
-                  key={stage.id}
-                  size="sm"
-                  variant={frame.phase === stage.id ? "default" : "outline"}
-                  onClick={() => {
-                    setPlaying(false);
-                    setTime(stage.at);
-                  }}
-                >
-                  {stage.label}
-                </Button>
-              ))}
-              <Button
-                size="sm"
-                onClick={() => {
-                  if (time >= cycleDuration) setTime(0);
-                  setPlaying((value) => !value);
-                }}
-              >
-                {playing ? "Pause" : "Run cycle"}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setPlaying(false);
-                  setTime(0);
-                }}
-              >
-                Reset
-              </Button>
-            </div>
-            <Slider
-              value={[time]}
-              min={0}
-              max={cycleDuration}
-              step={0.01}
-              onValueChange={(value) => {
-                setPlaying(false);
-                setTime(value[0] ?? 0);
-              }}
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant={section ? "default" : "outline"} onClick={() => setSection((v) => !v)}>
-                {section ? "Section on" : "Section off"}
-              </Button>
-              <Button size="sm" variant={showPin ? "default" : "outline"} onClick={() => setShowPin((v) => !v)}>
-                Finished pin
-              </Button>
-            </div>
           </div>
         </section>
 
@@ -168,6 +164,72 @@ export function Studio() {
         <DieSection />
         <ShopSequence />
       </section>
+    </div>
+  );
+}
+
+function Controls({
+  activePhase,
+  time,
+  playing,
+  section,
+  showPin,
+  onStage,
+  onTogglePlay,
+  onReset,
+  onScrub,
+  onToggleSection,
+  onTogglePin,
+  className = "",
+}: {
+  activePhase: Phase;
+  time: number;
+  playing: boolean;
+  section: boolean;
+  showPin: boolean;
+  onStage: (at: number) => void;
+  onTogglePlay: () => void;
+  onReset: () => void;
+  onScrub: (value: number) => void;
+  onToggleSection: () => void;
+  onTogglePin: () => void;
+  className?: string;
+}) {
+  return (
+    <div className={`space-y-3 ${className}`}>
+      <div className="flex flex-wrap gap-2">
+        {stages.map((stage) => (
+          <Button
+            key={stage.id}
+            size="sm"
+            variant={activePhase === stage.id ? "default" : "outline"}
+            onClick={() => onStage(stage.at)}
+          >
+            {stage.label}
+          </Button>
+        ))}
+        <Button size="sm" onClick={onTogglePlay}>
+          {playing ? "Pause" : "Run cycle"}
+        </Button>
+        <Button size="sm" variant="outline" onClick={onReset}>
+          Reset
+        </Button>
+      </div>
+      <Slider
+        value={[time]}
+        min={0}
+        max={cycleDuration}
+        step={0.01}
+        onValueChange={(value) => onScrub(value[0] ?? 0)}
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant={section ? "default" : "outline"} onClick={onToggleSection}>
+          {section ? "Section on" : "Section off"}
+        </Button>
+        <Button size="sm" variant={showPin ? "default" : "outline"} onClick={onTogglePin}>
+          Finished pin
+        </Button>
+      </div>
     </div>
   );
 }
